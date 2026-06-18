@@ -9,6 +9,13 @@ const listaGastos = document.getElementById('lista-gastos');
 const btnCalcular = document.getElementById('btn-calcular');
 const caixaResultado = document.getElementById('caixa-resultado');
 
+// Função auxiliar para evitar falhas de segurança (XSS) ao injetar texto no HTML
+function escaparHTML(string) {
+    const p = document.createElement('p');
+    p.textContent = string;
+    return p.innerHTML;
+}
+
 // 3. Adicionar um Novo Gasto
 btnAdicionar.addEventListener('click', () => {
     const nome = nomeInput.value.trim();
@@ -35,7 +42,7 @@ btnAdicionar.addEventListener('click', () => {
     atualizarTabela();
 });
 
-// 4. Atualizar a Tabela de Despesas na Interface
+// 4. Atualizar a Tabela de Despesas na Interface (Seguro)
 function atualizarTabela() {
     listaGastos.innerHTML = ''; // Limpa a tabela atual
 
@@ -43,31 +50,23 @@ function atualizarTabela() {
         const linha = document.createElement('tr');
         linha.className = 'table-row';
         linha.innerHTML = `
-            <td class="table-cell">${despesa.nome}</td>
+            <td class="table-cell">${escaparHTML(despesa.nome)}</td>
             <td class="table-cell">${despesa.valor.toFixed(2)}€</td>
         `;
         listaGastos.appendChild(linha);
     });
 }
 
-// 5. Algoritmo de Cálculo e Otimização de Dívidas
-btnCalcular.addEventListener('click', () => {
-    if (despesas.length === 0) {
-        alert('Adiciona pelo menos um gasto antes de calcular.');
-        return;
-    }
+// 5. Algoritmo de Cálculo e Otimização de Dívidas (Isolado)
+function calcularDividas(listaDespesas) {
+    const totalGastos = listaDespesas.reduce((acc, curr) => acc + curr.valor, 0);
+    const mediaPorPessoa = totalGastos / listaDespesas.length;
 
-    // Calcula Totais e Média
-    const totalGastos = despesas.reduce((acc, curr) => acc + curr.valor, 0);
-    const mediaPorPessoa = totalGastos / despesas.length;
-
-    // Separa quem deve (saldo negativo) de quem tem a receber (saldo positivo)
     let devedores = [];
     let credores = [];
 
-    despesas.forEach(d => {
+    listaDespesas.forEach(d => {
         const saldo = d.valor - mediaPorPessoa;
-        // Margem de erro de 1 cêntimo para arredondamentos
         if (saldo < -0.01) {
             devedores.push({ nome: d.nome, saldoOculto: Math.abs(saldo) });
         } else if (saldo > 0.01) {
@@ -79,31 +78,41 @@ btnCalcular.addEventListener('click', () => {
     let i = 0; // Índice de devedores
     let j = 0; // Índice de credores
 
-    // Cruza as listas para otimizar os pagamentos
     while (i < devedores.length && j < credores.length) {
         const devedor = devedores[i];
         const credor = credores[j];
 
-        // O valor a pagar é o menor entre a dívida e o crédito
         const valorAPagar = Math.min(devedor.saldoOculto, credor.saldoOculto);
 
-        transacoes.push(`O <strong>${devedor.nome}</strong> tem de pagar <strong>${valorAPagar.toFixed(2)}€</strong> a <strong>${credor.nome}</strong>`);
+        transacoes.push({
+            devedor: devedor.nome,
+            credor: credor.nome,
+            valor: valorAPagar
+        });
 
-        // Deduz o valor transacionado aos saldos originais
         devedor.saldoOculto -= valorAPagar;
         credor.saldoOculto -= valorAPagar;
 
-        // Se a dívida ou crédito ficou resolvida, avança para o próximo
         if (devedor.saldoOculto < 0.01) i++;
         if (credor.saldoOculto < 0.01) j++;
     }
 
-    mostrarResultados(transacoes, totalGastos, mediaPorPessoa);
+    return { transacoes, totalGastos, mediaPorPessoa };
+}
+
+// 6. Evento de Clique para Calcular
+btnCalcular.addEventListener('click', () => {
+    if (despesas.length === 0) {
+        alert('Adiciona pelo menos um gasto antes de calcular.');
+        return;
+    }
+
+    const resultado = calcularDividas(despesas);
+    mostrarResultados(resultado.transacoes, resultado.totalGastos, resultado.mediaPorPessoa);
 });
 
-// 6. Injetar os Resultados no HTML
+// 7. Injetar os Resultados no HTML (Seguro)
 function mostrarResultados(transacoes, total, media) {
-    // Remove a classe 'hidden' (caso tenhas usado Tailwind para ocultar inicialmente)
     caixaResultado.classList.remove('hidden');
 
     let html = `<h2 class="text-2xl font-bold text-gray-800 mb-4">Resultado Final</h2>`;
@@ -113,7 +122,9 @@ function mostrarResultados(transacoes, total, media) {
         html += `<p class="text-lg text-green-700 font-semibold">Tudo certinho! Ninguém deve nada a ninguém. 🍻</p>`;
     } else {
         transacoes.forEach(t => {
-            html += `<p class="text-lg text-orange-600 font-medium mb-2">💸 ${t}</p>`;
+            html += `<p class="text-lg text-orange-600 font-medium mb-2">
+                💸 O <strong>${escaparHTML(t.devedor)}</strong> tem de pagar <strong>${t.valor.toFixed(2)}€</strong> a <strong>${escaparHTML(t.credor)}</strong>
+            </p>`;
         });
     }
 
